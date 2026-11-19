@@ -1,6 +1,8 @@
 // Test + benchmark server for crust.
 //
 // HTTP on :8080, HTTPS (self-signed, h1 + h2) on :8443, forward proxy on :8081.
+// CRUST_HTTP_PORT, CRUST_HTTPS_PORT and CRUST_PROXY_PORT override the defaults.
+// Use 0 to allocate a free port. The first stdout line lists the bound ports.
 // Endpoints (on both HTTP and HTTPS):
 //
 //	/small                 13-byte body
@@ -396,19 +398,30 @@ func selfSigned() tls.Certificate {
 	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
 }
 
+func listen(env, defaultPort string) net.Listener {
+	port := os.Getenv(env)
+	if port == "" {
+		port = defaultPort
+	}
+	listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", port))
+	if err != nil {
+		log.Fatalf("%s=%s: %v", env, port, err)
+	}
+	return listener
+}
+
 func main() {
+	httpListener := listen("CRUST_HTTP_PORT", "8080")
+	httpsListener := listen("CRUST_HTTPS_PORT", "8443")
+	proxyListener := listen("CRUST_PROXY_PORT", "8081")
 	h := handler()
-	go func() {
-		log.Fatal(http.ListenAndServe("127.0.0.1:8081", proxy()))
-	}()
-	go func() {
-		log.Fatal(http.ListenAndServe("127.0.0.1:8080", h))
-	}()
 	srv := &http.Server{
-		Addr:      "127.0.0.1:8443",
 		Handler:   h,
 		TLSConfig: &tls.Config{Certificates: []tls.Certificate{selfSigned()}},
 	}
-	log.Println("listening: http :8080, https :8443, proxy :8081")
-	log.Fatal(srv.ListenAndServeTLS("", ""))
+	fmt.Printf("%d %d %d\n", httpListener.Addr().(*net.TCPAddr).Port,
+		httpsListener.Addr().(*net.TCPAddr).Port, proxyListener.Addr().(*net.TCPAddr).Port)
+	go func() { log.Fatal(http.Serve(proxyListener, proxy())) }()
+	go func() { log.Fatal(http.Serve(httpListener, h)) }()
+	log.Fatal(srv.ServeTLS(httpsListener, "", ""))
 }
