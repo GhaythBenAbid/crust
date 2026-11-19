@@ -6,23 +6,21 @@
 #   tests/compare.sh cookie     run cases whose name matches "cookie"
 #
 # Env: CURL (reference, default /usr/bin/curl), CRUST (default target/release/crust)
+# CRUST_HTTP_PORT, CRUST_HTTPS_PORT and CRUST_PROXY_PORT default to free ports.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
 CURL=${CURL:-/usr/bin/curl}
 CRUST=${CRUST:-$PWD/target/release/crust}
 FILTER=${1:-}
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/crust-compare.XXXXXX")
-trap 'kill $SERVER_PID 2>/dev/null; rm -rf "$WORK"' EXIT
+WORK=$(mktemp -d "${TMPDIR:-/tmp}/crust-compare.XXXXXX") || exit 1
+source testserver/start.sh
+trap 'stop_testserver; rm -rf "$WORK"' EXIT
+start_testserver "$WORK" || exit 1
 
-(cd testserver && go build -o "$WORK/testserver" .) || exit 1
-CERT_OUT="$WORK/cert.pem" PROXY_AUTH="" "$WORK/testserver" >"$WORK/server.log" 2>&1 &
-SERVER_PID=$!
-for _ in $(seq 50); do "$CURL" -s http://127.0.0.1:8080/small >/dev/null && break; sleep 0.1; done
-
-H=http://127.0.0.1:8080
-S=https://127.0.0.1:8443
-P=http://127.0.0.1:8081
+H=http://127.0.0.1:$HTTP_PORT
+S=https://127.0.0.1:$HTTPS_PORT
+P=http://127.0.0.1:$PROXY_PORT
 export H S P WORK
 printf 'line1\nline2\r\n' >"$WORK/data.txt"
 printf 'binary\0data' >"$WORK/bin.dat"
@@ -76,7 +74,7 @@ case_() {
 # ---- basics
 case_ get_small            -s '$H/small'
 case_ get_https_k          -sk '$S/small'
-case_ get_noscheme         -s '127.0.0.1:8080/small'
+case_ get_noscheme         -s '${H#http://}/small'
 case_ echo_get             -s -A t '$H/echo'
 case_ echo_query           -s -A t "\"\$H/echo/a/b?x=1&y=2\""
 case_ head                 -sI '$H/small' '|' grep -iv '^date:'
@@ -132,7 +130,7 @@ case_ user_agent           -s -A "'my agent/1.0'" '$H/echo'
 case_ referer              -s -A t -e 'http://ref.test/' '$H/echo'
 case_ basic_auth           -s -u user:pass '$H/basic-auth/user/pass'
 case_ basic_auth_bad       -s -u user:nope '$H/basic-auth/user/pass'
-case_ basic_auth_url       -s 'http://user:pass@127.0.0.1:8080/basic-auth/user/pass'
+case_ basic_auth_url       -s 'http://user:pass@${H#http://}/basic-auth/user/pass'
 case_ bearer               -s --oauth2-bearer tok123 '$H/bearer'
 case_ netrc                -s --netrc-file '$WORK/netrc' '$H/basic-auth/nu/np'
 case_ range                -s -A t -r 0-99 '$H/echo'
@@ -156,8 +154,8 @@ case_ redirect_custom_307  -sL -A t -X PUT -d x '$H/r/307'
 case_ redirect_custom_308  -sL -A t -X PUT -d x '$H/r/308'
 case_ redirect_custom_type -sL -A t -X PUT -d x -H "'Content-Type: application/json'" '$H/r/302'
 case_ redirect_custom_chain -sL -A t -X PUT -d x '"$H/r/302?to=/r/307"'
-case_ redirect_https       -skL "\"\$H/r/302?to=https://127.0.0.1:8443/small\""
-case_ redirect_auth_drop   -sL -A t -u a:b -H "'X-Keep: 1'" "\"\$H/r/302?to=http://localhost:8080/echo\""
+case_ redirect_https       -skL '"$H/r/302?to=$S/small"'
+case_ redirect_auth_drop   -sL -A t -u a:b -H "'X-Keep: 1'" '"$H/r/302?to=http://localhost:$HTTP_PORT/echo"'
 case_ redirect_head        -sIL '$H/redirect/2' '|' grep -iv '^date:'
 case_ url_effective        -sL -o /dev/null -w "'%{url_effective} %{num_redirects} %{http_code}\n'" '$H/redirect/2'
 
@@ -217,9 +215,9 @@ case_ partial_file         -s -m 1 '$H/stall' '|' wc -c
 case_ retry_success        -s --retry 3 --retry-delay 0 "\"\$H/flaky?key=k1&fail=2\""
 case_ retry_exhausted      -s --retry 1 --retry-delay 0 "\"\$H/flaky?key=k2&fail=5\""
 case_ retry_fail_flag      -sf --retry 2 --retry-delay 0 "\"\$H/flaky?key=k3&fail=1\""
-case_ resolve              -s -A t --resolve 'myhost.test:8080:127.0.0.1' 'http://myhost.test:8080/echo'
-case_ happy_eyeballs       -s -m 5 --resolve "'hosty.test:8080:10.255.255.1,127.0.0.1'" 'http://hosty.test:8080/small'
-case_ ipv4_only            -s -4 'http://localhost:8080/small'
+case_ resolve              -s -A t --resolve 'myhost.test:$HTTP_PORT:127.0.0.1' 'http://myhost.test:$HTTP_PORT/echo'
+case_ happy_eyeballs       -s -m 5 --resolve 'hosty.test:$HTTP_PORT:10.255.255.1,127.0.0.1' 'http://hosty.test:$HTTP_PORT/small'
+case_ ipv4_only            -s -4 'http://localhost:$HTTP_PORT/small'
 case_ unknown_option       -s --definitely-not-an-option '$H/small'
 case_ no_url               -s
 
