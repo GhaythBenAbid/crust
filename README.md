@@ -32,6 +32,20 @@ Early (0.1). HTTP/1.1 over HTTP and HTTPS. Supported flags so far:
 connection reuse across URLs. Not yet: HTTP/2, `-Z`, proxies, cookies, `-F`,
 `-T`, `--compressed`, Keychain certificates. Work in progress.
 
+## Releases
+
+Prebuilt binaries for macOS (Apple Silicon, Intel) and Linux (x86_64, ARM64)
+are attached to every [GitHub Release](https://github.com/GhaythBenAbid/crust/releases).
+
+To cut a release: bump `version` in `Cargo.toml`, commit, then tag and push:
+
+```sh
+git tag v0.1.1 && git push origin v0.1.1
+```
+
+The release workflow checks the tag matches `Cargo.toml`, runs the tests,
+builds all targets and publishes the release with checksums and notes.
+
 ## Development
 
 ```sh
