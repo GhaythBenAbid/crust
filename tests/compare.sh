@@ -25,7 +25,7 @@ export H S P WORK
 printf 'line1\nline2\r\n' >"$WORK/data.txt"
 printf 'binary\0data' >"$WORK/bin.dat"
 printf '{"a":1}' >"$WORK/body.json"
-printf 'X-From-File: yes\nX-Second: 2\n' >"$WORK/headers.txt"
+printf 'X-From-File: yes\r\n\r\nX-Second: 2\n' >"$WORK/headers.txt"
 printf 'machine 127.0.0.1 login nu password np\n' >"$WORK/netrc"
 printf '127.0.0.1\tFALSE\t/\tFALSE\t0\tjarcookie\tfromjar\n' >"$WORK/jar.txt"
 
@@ -108,11 +108,16 @@ case_ post_data_binary     -s -A t --data-binary '@$WORK/data.txt' '$H/echo'
 case_ post_data_raw        -s -A t --data-raw '@notafile' '$H/echo'
 case_ data_urlencode       -s -A t --data-urlencode "'q=a b&c'" --data-urlencode '=x/y' '$H/echo'
 case_ data_urlencode_file  -s -A t --data-urlencode 'f@$WORK/data.txt' '$H/echo'
+case_ data_urlencode_content -s -A t --data-urlencode "'a b~!*()é'" '$H/echo'
+case_ data_urlencode_binary_file -s -A t --data-urlencode '@$WORK/bin.dat' '$H/echo'
 case_ get_with_data        -s -A t -G -d 'q=1' -d 'r=2' '$H/echo'
 case_ put_data             -s -A t -X PUT -d 'x' '$H/echo'
 case_ delete               -s -A t -X DELETE '$H/echo'
 case_ json                 -s -A t --json "'{\"k\":\"v\"}'" '$H/echo'
 case_ json_file            -s -A t --json '@$WORK/body.json' '$H/echo'
+case_ json_chunks          -s -A t --json "'{\"a\":'" --json '1}' '$H/echo'
+case_ json_override_header -s -A t --json '{}' -H "'Content-Type:'" -H "'Accept: application/problem+json'" '$H/echo'
+case_ json_redirect        -sL -A t --json '{}' '$H/r/302'
 case_ form                 -s -A t -F 'name=value' -F 'up=@$WORK/data.txt' '$H/echo'
 case_ form_type_filename   -s -A t -F "'f=@\$WORK/bin.dat;type=application/x-test;filename=renamed.bin'" '$H/echo'
 case_ form_string          -s -A t --form-string "'s=@literal'" '$H/echo'
@@ -126,6 +131,7 @@ case_ remove_header        -s -A t -H "'Accept:'" '$H/echo'
 case_ empty_header         -s -A t -H "'X-Empty;'" '$H/echo'
 case_ replace_host         -s -A t -H "'Host: example.test'" '$H/echo'
 case_ headers_from_file    -s -A t -H '@$WORK/headers.txt' '$H/echo'
+case_ headers_from_stdin   -s -A t -H @- '$H/echo' '<' '"$WORK/headers.txt"'
 case_ user_agent           -s -A "'my agent/1.0'" '$H/echo'
 case_ referer              -s -A t -e 'http://ref.test/' '$H/echo'
 case_ basic_auth           -s -u user:pass '$H/basic-auth/user/pass'

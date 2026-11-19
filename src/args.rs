@@ -2,6 +2,7 @@
 //! clustered short flags like `-sSL` and attached values like `-XPOST`).
 
 use crate::util::{Error, Result, E_READ_ERROR, E_USAGE};
+use std::borrow::Cow;
 use std::io::Read;
 use std::time::Duration;
 
@@ -86,6 +87,8 @@ fn takes_value(long: &str) -> bool {
             | "data-ascii"
             | "data-binary"
             | "data-raw"
+            | "data-urlencode"
+            | "json"
             | "output"
             | "user-agent"
             | "write-out"
@@ -111,6 +114,30 @@ fn read_source(spec: &str) -> Result<Vec<u8>> {
     };
     r.map_err(|e| Error::new(E_READ_ERROR, format!("Failed to open/read local data from file/application ({spec}): {e}")))?;
     Ok(buf)
+}
+
+fn urlencode_data(arg: &str) -> Result<Vec<u8>> {
+    let (name, data) = if let Some((name, content)) = arg.split_once('=') {
+        (name, Cow::Borrowed(content.as_bytes()))
+    } else if let Some((name, path)) = arg.split_once('@') {
+        (name, Cow::Owned(read_source(path)?))
+    } else {
+        ("", Cow::Borrowed(arg.as_bytes()))
+    };
+    let mut encoded = Vec::with_capacity(name.len() + data.len());
+    if !name.is_empty() {
+        encoded.extend_from_slice(name.as_bytes());
+        encoded.push(b'=');
+    }
+    const HEX: &[u8; 16] = b"0123456789ABCDEF";
+    for &byte in data.iter() {
+        match byte {
+            b' ' => encoded.push(b'+'),
+            b'-' | b'.' | b'_' | b'~' | b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' => encoded.push(byte),
+            _ => encoded.extend_from_slice(&[b'%', HEX[(byte >> 4) as usize], HEX[(byte & 15) as usize]]),
+        }
+    }
+    Ok(encoded)
 }
 
 fn parse_secs(name: &str, v: &str) -> Result<Option<Duration>> {
@@ -148,6 +175,7 @@ pub fn parse(argv: Vec<String>) -> Result<Parsed> {
     };
     let mut urls: Vec<String> = Vec::new();
     let mut outs: Vec<OutSpec> = Vec::new();
+    let mut json = false;
 
     let mut it = argv.into_iter();
     while let Some(arg) = it.next() {
@@ -182,20 +210,30 @@ pub fn parse(argv: Vec<String>) -> Result<Parsed> {
             let v = val.unwrap_or_default();
             match name.as_str() {
                 "request" => o.method = Some(v),
-                "header" => o.headers.push(v),
-                "data" | "data-ascii" | "data-binary" | "data-raw" => {
-                    let chunk = match v.strip_prefix('@') {
-                        Some(path) if name != "data-raw" => {
+                "header" => {
+                    if let Some(path) = v.strip_prefix('@') {
+                        let bytes = read_source(path)?;
+                        o.headers.extend(String::from_utf8_lossy(&bytes).lines().map(str::to_owned));
+                    } else {
+                        o.headers.push(v);
+                    }
+                }
+                "data" | "data-ascii" | "data-binary" | "data-raw" | "data-urlencode" | "json" => {
+                    let chunk = match (name.as_str(), v.strip_prefix('@')) {
+                        ("data-urlencode", _) => urlencode_data(&v)?,
+                        ("data-raw", _) | (_, None) => v.into_bytes(),
+                        (flag, Some(path)) => {
                             let mut b = read_source(path)?;
-                            if name != "data-binary" {
+                            if !matches!(flag, "data-binary" | "json") {
                                 b.retain(|&c| c != b'\r' && c != b'\n');
                             }
                             b
                         }
-                        _ => v.into_bytes(),
                     };
                     let d = o.data.get_or_insert_with(Vec::new);
-                    if !d.is_empty() {
+                    if name == "json" {
+                        json = true;
+                    } else if !d.is_empty() {
                         d.push(b'&');
                     }
                     d.extend_from_slice(&chunk);
@@ -251,6 +289,9 @@ pub fn parse(argv: Vec<String>) -> Result<Parsed> {
     if urls.is_empty() {
         return Err(usage("no URL specified"));
     }
+    if json {
+        o.headers.splice(0..0, ["Content-Type: application/json".into(), "Accept: application/json".into()]);
+    }
     let mut outs = outs.into_iter();
     o.targets = urls
         .into_iter()
@@ -265,14 +306,16 @@ Usage: crust [options...] <url>...
  -d, --data <data>           HTTP POST data (@file reads a file, - for stdin)
      --data-binary <data>    HTTP POST data, @file sent as-is
      --data-raw <data>       HTTP POST data, '@' not special
+     --data-urlencode <data> HTTP POST data with form URL encoding
  -e, --referer <url>         Referer URL
  -f, --fail                  Fail silently (exit 22) on HTTP errors
  -G, --get                   Put the post data in the URL and use GET
  -g, --globoff               Disable URL globbing ([1-10], {a,b})
- -H, --header <header>       Pass custom header to server
+ -H, --header <header>       Pass a custom header or read headers from @file
  -h, --help                  Show this help
  -I, --head                  Show document info only
  -i, --include               Include response headers in output
+     --json <data>           Send JSON data or read it from @file
  -k, --insecure              Skip TLS certificate verification
  -L, --location              Follow redirects
      --max-redirs <num>      Maximum number of redirects allowed (default 50)
@@ -327,6 +370,19 @@ mod tests {
         let o = p(&["-m", "0.25", "-m", "0", "--connect-timeout", "0.5", "--connect-timeout", "0.0", "x.com"]);
         assert_eq!(o.max_time, None);
         assert_eq!(o.connect_timeout, None);
+    }
+
+    #[test]
+    fn encodes_data_values_and_preserves_names() {
+        let o = p(&["--data-urlencode", "a%20b=x y&é", "--data-urlencode", "=x/y", "x.com"]);
+        assert_eq!(o.data.as_deref(), Some(&b"a%20b=x+y%26%C3%A9&x%2Fy"[..]));
+    }
+
+    #[test]
+    fn json_appends_without_a_separator() {
+        let o = p(&["-d", "a", "--json", "b", "--json", "c", "-d", "d", "x.com"]);
+        assert_eq!(o.data.as_deref(), Some(&b"abc&d"[..]));
+        assert_eq!(o.headers, ["Content-Type: application/json", "Accept: application/json"]);
     }
 
     #[test]
