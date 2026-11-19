@@ -148,6 +148,12 @@ case_ redirect_303_post    -sL -A t -d x "\"\$H/r/303\""
 case_ redirect_307_post    -sL -A t -d x "\"\$H/r/307\""
 case_ redirect_308_post    -sL -A t -d x "\"\$H/r/308\""
 case_ redirect_custom_x    -sL -A t -X PUT -d x "\"\$H/r/302\""
+case_ redirect_custom_301  -sL -A t -X PUT -d x '$H/r/301'
+case_ redirect_custom_303  -sL -A t -X PUT -d x '$H/r/303'
+case_ redirect_custom_307  -sL -A t -X PUT -d x '$H/r/307'
+case_ redirect_custom_308  -sL -A t -X PUT -d x '$H/r/308'
+case_ redirect_custom_type -sL -A t -X PUT -d x -H "'Content-Type: application/json'" '$H/r/302'
+case_ redirect_custom_chain -sL -A t -X PUT -d x '"$H/r/302?to=/r/307"'
 case_ redirect_https       -skL '"$H/r/302?to=$S/small"'
 case_ redirect_auth_drop   -sL -A t -u a:b -H "'X-Keep: 1'" '"$H/r/302?to=http://localhost:$HTTP_PORT/echo"'
 case_ redirect_head        -sIL '$H/redirect/2' '|' grep -iv '^date:'
