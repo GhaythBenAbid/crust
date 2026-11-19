@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Benchmark curl binaries against the local bench server.
 # Usage: ./run.sh [curl-binary ...]   (defaults: system curl + Homebrew curl)
-# Requires: hyperfine, the test server running: (cd testserver && go run .) &
+# Requires hyperfine. Start the test server separately, or set CRUST_HTTP_PORT=0
+# to start one for this run. CRUST_HTTPS_PORT and CRUST_PROXY_PORT also work.
 set -euo pipefail
-cd "$(dirname "$0")"
+BENCH_DIR=$(cd "$(dirname "$0")" && pwd)
 
 BINS=("$@")
 if [ ${#BINS[@]} -eq 0 ]; then
@@ -11,13 +12,22 @@ if [ ${#BINS[@]} -eq 0 ]; then
   [ -x /opt/homebrew/opt/curl/bin/curl ] && BINS+=(/opt/homebrew/opt/curl/bin/curl)
 fi
 
-H=http://127.0.0.1:8080
-S=https://127.0.0.1:8443
+if [[ ${CRUST_HTTP_PORT:-} == 0 || ${CRUST_HTTPS_PORT:-} == 0 || ${CRUST_PROXY_PORT:-} == 0 ]]; then
+  source "$BENCH_DIR/../testserver/start.sh"
+  WORK=$(mktemp -d "${TMPDIR:-/tmp}/crust-bench.XXXXXX")
+  trap 'stop_testserver; rm -rf "$WORK"' EXIT
+  start_testserver "$WORK"
+else
+  HTTP_PORT=${CRUST_HTTP_PORT:-8080}
+  HTTPS_PORT=${CRUST_HTTPS_PORT:-8443}
+fi
+H=http://127.0.0.1:$HTTP_PORT
+S=https://127.0.0.1:$HTTPS_PORT
 GIB=$((1024 * 1024 * 1024))
-OUT=results
+OUT=$BENCH_DIR/results
 mkdir -p "$OUT"
 
-curl -sf "$H/small" >/dev/null || { echo "test server not running: (cd testserver && go run .) &"; exit 1; }
+curl -sf "$H/small" >/dev/null || { echo "test server not responding at $H/small" >&2; exit 1; }
 
 # name | runs | args (curl flags + URL)
 SCENARIOS=(

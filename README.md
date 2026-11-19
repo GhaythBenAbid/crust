@@ -54,3 +54,9 @@ tests/compare.sh                # differential tests vs curl (needs Go)
 (cd testserver && go run .) &   # local test/bench server
 bench/run.sh /usr/bin/curl target/release/crust   # benchmarks (needs hyperfine)
 ```
+
+Each comparison run starts its own server on free ports. Set `CRUST_HTTP_PORT`,
+`CRUST_HTTPS_PORT`, or `CRUST_PROXY_PORT` to request specific ports. The standalone
+server defaults to `8080`, `8443`, and `8081`, and prints its chosen ports on the
+first line in HTTP, HTTPS, proxy order. Benchmarks use those same environment
+variables. Set `CRUST_HTTP_PORT=0` on `bench/run.sh` to start a server for that run.
