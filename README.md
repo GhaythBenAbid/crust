@@ -28,7 +28,8 @@ Measured on an M1 Pro against a local server (mean wall time incl. process launc
 
 Early (0.1). HTTP/1.1 over HTTP and HTTPS. Supported flags so far:
 `-X -H -d --data-binary --data-raw -G -o -O -L --max-redirs -i -I -v -s -S -f -k
--A -e -u -w -m --connect-timeout -g`, URL globbing (`[1-100]`, `{a,b}`) and
+-A -e -u -w -m --connect-timeout -g`, request helpers (`--json`,
+`--data-urlencode`, `-H @file`), URL globbing (`[1-100]`, `{a,b}`) and
 connection reuse across URLs. Not yet: HTTP/2, `-Z`, proxies, cookies, `-F`,
 `-T`, `--compressed`, Keychain certificates. Work in progress.
 
