@@ -113,12 +113,13 @@ fn read_source(spec: &str) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
-fn parse_secs(name: &str, v: &str) -> Result<Duration> {
-    v.parse::<f64>()
-        .ok()
-        .filter(|s| s.is_finite() && *s >= 0.0)
-        .map(Duration::from_secs_f64)
-        .ok_or_else(|| usage(format!("option --{name}: expected a proper numerical parameter")))
+fn parse_secs(name: &str, v: &str) -> Result<Option<Duration>> {
+    let invalid = || usage(format!("option --{name}: expected a proper numerical parameter"));
+    let seconds = v.parse::<f64>().map_err(|_| invalid())?;
+    if seconds == 0.0 {
+        return Ok(None);
+    }
+    Duration::try_from_secs_f64(seconds).map(Some).map_err(|_| invalid())
 }
 
 pub fn parse(argv: Vec<String>) -> Result<Parsed> {
@@ -223,8 +224,8 @@ pub fn parse(argv: Vec<String>) -> Result<Parsed> {
                         None => v,
                     })
                 }
-                "max-time" => o.max_time = Some(parse_secs(&name, &v)?),
-                "connect-timeout" => o.connect_timeout = Some(parse_secs(&name, &v)?),
+                "max-time" => o.max_time = parse_secs(&name, &v)?,
+                "connect-timeout" => o.connect_timeout = parse_secs(&name, &v)?,
                 "url" => urls.push(v),
                 "http1.1" | "no-progress-meter" => {}
                 "http2" | "http2-prior-knowledge" | "http3" => {
@@ -315,6 +316,17 @@ mod tests {
         assert!(o.silent);
         assert!(matches!(&o.targets[0].out, OutSpec::File(f) if f == "/dev/null"));
         assert!(matches!(o.targets[1].out, OutSpec::Stdout));
+    }
+
+    #[test]
+    fn zero_timeouts_clear_previous_values() {
+        let o = p(&["-m", "0.25", "--connect-timeout", "0.5", "x.com"]);
+        assert_eq!(o.max_time, Some(Duration::from_millis(250)));
+        assert_eq!(o.connect_timeout, Some(Duration::from_millis(500)));
+
+        let o = p(&["-m", "0.25", "-m", "0", "--connect-timeout", "0.5", "--connect-timeout", "0.0", "x.com"]);
+        assert_eq!(o.max_time, None);
+        assert_eq!(o.connect_timeout, None);
     }
 
     #[test]

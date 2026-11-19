@@ -205,6 +205,7 @@ case_ cacert               -s --cacert '$WORK/cert.pem' '$S/small'
 case_ max_time_hit         -s -m 0.3 '$H/stall'
 case_ max_time_ok          -s -m 5 "\"\$H/slow?ms=50\""
 case_ max_time_zero        -s -m 0 "\"\$H/slow?ms=80\""
+case_ max_time_reset       -s -m 0.02 -m 0 --connect-timeout 0.02 --connect-timeout 0 "\"\$H/slow?ms=80\""
 case_ connect_timeout_zero -s --connect-timeout 0 '$H/small'
 case_ partial_file         -s -m 1 '$H/stall' '|' wc -c
 case_ retry_success        -s --retry 3 --retry-delay 0 "\"\$H/flaky?key=k1&fail=2\""
