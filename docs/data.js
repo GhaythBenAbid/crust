@@ -31,15 +31,15 @@ window.CRUST = {
   ],
 
   // Differential test suite: same command through curl and crust, outputs compared.
-  tests: { passing: 76, total: 121 },
+  tests: { passing: 78, total: 122 },
 
   roadmap: [
     { status: "done", title: "HTTP/1.1 over HTTP and HTTPS", note: "rustls + ring, verified with Mozilla roots" },
     { status: "done", title: "curl-style flags and exit codes", note: "-X -H -d -o -O -L -i -I -v -s -S -f -k -A -e -u -w -m" },
     { status: "done", title: "URL globbing and connection reuse", note: "[1-100], {a,b}, keep-alive pool" },
     { status: "done", title: "Benchmark suite", note: "hyperfine against both curls" },
-    { status: "done", title: "Differential test harness", note: "121 cases comparing crust with curl" },
-    { status: "progress", title: "Close compatibility gaps", note: "--max-time 0, empty -o files, URL encoding" },
+    { status: "done", title: "Differential test harness", note: "122 cases comparing crust with curl" },
+    { status: "progress", title: "Close compatibility gaps", note: "Empty -o files and URL encoding" },
     { status: "planned", title: "Proxies", note: "-x, http_proxy / https_proxy / no_proxy, CONNECT" },
     { status: "planned", title: "Keychain certificates and --cacert", note: "trust what macOS trusts" },
     { status: "planned", title: "Happy Eyeballs", note: "fast IPv6 → IPv4 fallback" },
