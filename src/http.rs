@@ -478,21 +478,18 @@ impl Client<'_> {
         let mut url = Url::parse(raw)?;
         let first_host = url.host.clone();
         let mut body: Option<Vec<u8>> = None;
-        let mut method = "GET".to_string();
+        let mut method = "GET";
         if let Some(d) = &o.data {
             if o.get {
                 let sep = if url.path.contains('?') { '&' } else { '?' };
                 url.path = format!("{}{sep}{}", url.path, String::from_utf8_lossy(d));
             } else {
                 body = Some(d.clone());
-                method = "POST".into();
+                method = "POST";
             }
         }
         if o.head {
-            method = "HEAD".into();
-        }
-        if let Some(m) = &o.method {
-            method = m.clone();
+            method = "HEAD";
         }
         let deadline = o.max_time.map(|d| info.start + d);
         let mut sink = Sink::new(out, &url)?;
@@ -500,10 +497,11 @@ impl Client<'_> {
         loop {
             info.url_effective = url.to_string();
             info.scheme = if url.tls { "HTTPS" } else { "HTTP" };
-            info.method = method.clone();
+            let request_method = o.method.as_deref().unwrap_or(method);
+            info.method = request_method.to_string();
             info.size_upload = body.as_ref().map_or(0, |b| b.len() as u64);
 
-            let req = self.build_request(&url, &method, body.as_deref(), url.host == first_host);
+            let req = self.build_request(&url, request_method, body.as_deref(), url.host == first_host);
             let (mut conn, resp) = self.send(&url, &req, deadline, info)?;
             info.code = resp.code;
             info.version = resp.version;
@@ -515,7 +513,7 @@ impl Client<'_> {
             if o.include || o.head {
                 sink.write(&resp.raw)?;
             }
-            let fr = framing(&method, &resp)?;
+            let fr = framing(request_method, &resp)?;
             let keep = resp.keep_alive();
 
             if o.follow
@@ -531,8 +529,9 @@ impl Client<'_> {
                     return Err(Error::new(E_TOO_MANY_REDIRECTS, format!("Maximum ({}) redirects followed", o.max_redirs)));
                 }
                 let to_get = (resp.code == 303 && method != "HEAD") || (matches!(resp.code, 301 | 302) && method == "POST");
-                if to_get && o.method.is_none() {
-                    method = "GET".into();
+                // -X overrides the wire method while redirects still update the request body.
+                if to_get {
+                    method = "GET";
                     body = None;
                 }
                 if o.verbose {
