@@ -127,7 +127,7 @@ fn stdout_raw() -> ManuallyDrop<File> {
 
 enum Sink {
     Stdout(ManuallyDrop<File>),
-    /// Created on first write, so failed transfers leave no empty file behind.
+    /// Created on first write or successful completion.
     Pending(String),
     File(File),
 }
@@ -145,11 +145,16 @@ impl Sink {
         })
     }
 
-    fn write(&mut self, b: &[u8]) -> Result<()> {
+    fn open_pending(&mut self) -> Result<()> {
         if let Sink::Pending(p) = self {
             let f = File::create(&*p).map_err(|e| Error::new(E_WRITE_ERROR, format!("Failed to open the file {p}: {e}")))?;
             *self = Sink::File(f);
         }
+        Ok(())
+    }
+
+    fn write(&mut self, b: &[u8]) -> Result<()> {
+        self.open_pending()?;
         let r = match self {
             Sink::Stdout(f) => f.write_all(b),
             Sink::File(f) => f.write_all(b),
@@ -542,7 +547,7 @@ impl Client<'_> {
             }
             let clean = read_body(&mut conn, &fr, Some(&mut sink), deadline, &mut info.size_download)?;
             self.release(conn, keep && clean);
-            return Ok(());
+            return sink.open_pending();
         }
     }
 

@@ -95,6 +95,10 @@ case_ chunked              -s "\"\$H/chunked?n=50&size=1000\""
 case_ chunked_tiny         -s "\"\$H/chunked?n=300&size=1\""
 case_ empty_body           -s '$H/empty'
 case_ empty_to_file        -s -o empty.out '$H/empty'
+case_ empty_truncates_file -s -o empty.out '$H/small' -o empty.out '$H/empty'
+case_ empty_missing_dir    -s -o missing/empty.out '$H/empty'
+case_ empty_http_failure   -sf -o empty.out '$H/status/404'
+case_ empty_connect_failure -s -o empty.out 'http://127.0.0.1:1/'
 case_ many_headers         -si '$H/many-headers' '|' grep -iv '^date:'
 case_ https_big            -sk -o big.bin "\"\$S/bytes?n=5000000\""
 case_ https_chunked        -sk "\"\$S/chunked?n=20&size=5000\""
